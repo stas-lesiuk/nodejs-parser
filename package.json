@@ -15,5 +15,10 @@
   "bugs": {
     "url": "https://github.com/stas-lesiuk/nodejs-parser/issues"
   },
-  "homepage": "https://github.com/stas-lesiuk/nodejs-parser#readme"
+  "homepage": "https://github.com/stas-lesiuk/nodejs-parser#readme",
+  "dependencies": {
+    "cheerio": "^1.0.0-rc.2",
+    "request": "^2.85.0",
+    "tress": "^1.0.5"
+  }
 }
