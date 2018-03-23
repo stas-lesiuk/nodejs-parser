@@ -4,15 +4,24 @@ const cheerio = require('cheerio');
 const resolve = require('url').resolve;
 const fs = require('fs');
 
-const domain = require('./otomoto');
+const domain = require('./autokult');
 const selectors = domain.selectors;
+const URL = domain.URL;
+const mode = domain.mode || 'recursive';
 
-const URL = 'https://www.otomoto.pl/osobowe/od-2003/miasto_lublin/?search%5Bbrand_program_id%5D%5B0%5D=&search%5Bdist%5D=5&search%5Bfilter_enum_damaged%5D=0&search%5Bfilter_float_mileage%3Ato%5D=175000&search%5Bfilter_float_price%3Afrom%5D=10000&search%5Bfilter_float_price%3Ato%5D=15000';
-
+let index = 1;
 let results = [];
 let visitedPaginationLinks = [];
 
-const q = tress(function (url, callback) {
+const q = tress(mode === 'lazy-load' ? lazyLoadTress : recursiveTress);
+
+q.drain = function () {
+  fs.writeFileSync('./data.json', JSON.stringify(results, null, 4));
+};
+
+q.push(URL + index);
+
+function recursiveTress(url, callback) {
   request(url, function (err, res, body) {
     if (err) {
       throw err;
@@ -29,22 +38,52 @@ const q = tress(function (url, callback) {
     });
 
     //pagination
-    selectors.pagination($).each(function () {
-      // resolve is used to make relative path absolute
-      const href = resolve(URL, $(this).attr('href'));
-      if(!visitedPaginationLinks.includes(href)) {
-        console.log('pushing pagination link: ', href);
-        visitedPaginationLinks.push(href);
-        q.push(href);
-      }
-    });
+      selectors.pagination($).each(function () {
+        // resolve is used to make relative path absolute
+        const href = resolve(URL, $(this).attr('href'));
+        if (!visitedPaginationLinks.includes(href)) {
+          console.log('pushing pagination link: ', href);
+          visitedPaginationLinks.push(href);
+          q.push(href);
+        }
+      });
 
     callback();
   });
-});
+}
 
-q.drain = function () {
-  fs.writeFileSync('./data.json', JSON.stringify(results, null, 4));
-};
+function lazyLoadTress(url, callback) {
+  request(url, function (err, res, body) {
+    if (err) {
+      throw err;
+    }
 
-q.push(URL);
+    const $ = cheerio.load(res.body);
+    if (selectors.isDetailsPage($)) {
+      results.push(domain.createResult($, url));
+    }
+
+    //push all links to details pages (offer-title is present only on list page)
+    selectors.linkToDetail($).each(function () {
+      q.push($(this).attr('href'));
+    });
+
+    if (selectors.hasNext($)) {
+      index++;
+      const href = URL + index;
+      console.log('pushing next list page: ', href);
+      q.push(href);
+      //   if (!visitedPaginationLinks.includes(href)) {
+      //     console.log('pushing pagination link: ', href);
+      //     visitedPaginationLinks.push(href);
+      //     q.push(href);
+      //   }
+    }
+
+    callback();
+  });
+}
+
+function log() {
+  console.log(...args);
+}
